@@ -1,0 +1,58 @@
+import threading
+from dobot_api import DobotApiDashboard, DobotApi, DobotApiMove, MyType
+from time import sleep
+import numpy as np
+from main import GetFeed, ClearRobotError
+
+##  Connecting to robot arm
+#
+PARAMS = 0
+def connect_robot():
+    try:
+        ip = "192.168.1.6"
+        dashboard_p = 29999
+        move_p = 30003
+        feed_p = 30004
+        print("Establishing connection...")
+        dashboard = DobotApiDashboard(ip, dashboard_p)
+        move = DobotApiMove(ip, move_p)
+        feed = DobotApi(ip, feed_p)
+        print(">.< Connection successful >!<")
+        return dashboard, move, feed
+    except Exception as e:
+        print(":( Connection failed :(")
+        raise e
+    
+## Running script
+#
+if __name__ == '__main__':
+
+    dashboard, move, feed = connect_robot()
+
+    """
+        if PARAMS  Conditional compilation directive has parameters
+            0:  Instruction without parameters
+            1:  Instruction with parameters
+    """
+    # Initialize robot arm
+    load=0.400 # around the total load the end effector will be handling, in kilograms
+    dashboard.EnableRobot(load)
+    
+    # 274, 10, 121, -180
+    # 274, 10, 110, -180
+    # J1=0
+    # J2=0
+    # J3=0
+    # J4=-180
+    # User=0
+    # Tool=0
+    # dashboard.PositiveSolution(J1, J2, J3, J4,User, Tool)    # One parameter
+
+    x = 274
+    y = 10
+    z = 110
+    r = -180
+    userparam="User=0"
+    move.MovL(x, y, z, r,userparam)
+
+    dashboard.RunScript("src0")  
