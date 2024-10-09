@@ -98,7 +98,7 @@ while True:
         x_real_offset *= scale_factor_x
         y_real_offset *= scale_factor_y
 
-        print(f"DOBOT X: {y_real_offset}, Y: {x_real_offset}") # FLIP X AND Y BECAUSE ARM REFERENCE DIFFERENT FROM CAMERA REFERENCE
+        print(f"PIXEL OFFSET X: {y_offset}, Y: {x_offset}") # FLIP X AND Y BECAUSE ARM REFERENCE DIFFERENT FROM CAMERA REFERENCE
 
         #(results[0].boxes.id is not None):
             #print(f"id: {results[0].boxes.id[0]} ox: {ocenter_x}, oy: {ocenter_y}")

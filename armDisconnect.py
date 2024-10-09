@@ -34,22 +34,4 @@ if __name__ == '__main__':
             0:  Instruction without parameters
             1:  Instruction with parameters
     """
-    # Initialize robot arm
-    load=0.400 # around the total load the end effector will be handling, in kilograms
-    dashboard.EnableRobot(load)
-    
-    # Controlling digital output port
-    index=1
-    status=0
-    dashboard.DO(index,status)  
-
-    # Home 274, 10, 130, -180
-    x = 274
-    y = 10
-    z = 110
-    r = -180
-    userparam="User=0"
-    move.MovL(x, y, z, r,userparam)
-
-    dashboard.GetPose()
-    
+    dashboard.DisableRobot()

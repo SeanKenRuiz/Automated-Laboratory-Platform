@@ -4,13 +4,37 @@ import numpy as np
 from ultralytics import YOLO
 from ultralytics import trackers
 import torch
+import threading
 
+from dobot_api import DobotApiDashboard, DobotApi, DobotApiMove, MyType
+from time import sleep
+import numpy as np
+from main import GetFeed, ClearRobotError
+
+# Connecting to robot arm
+def connect_robot():
+    try:
+        ip = "192.168.1.6"
+        dashboard_p = 29999
+        move_p = 30003
+        feed_p = 30004
+        print("Establishing connection...")
+        dashboard = DobotApiDashboard(ip, dashboard_p)
+        move = DobotApiMove(ip, move_p)
+        feed = DobotApi(ip, feed_p)
+        print(">.< Connection successful >!<")
+        return dashboard, move, feed
+    except Exception as e:
+        print(":( Connection failed :(")
+        raise e
+    
 global tracking_index
 tracking_index = 0
 
 test_tube_diameter = 11 # in millimeters
 empty_holder_diameter = 11 # in millimeters
-dist_between_tubes = 19.65
+dist_between_tubes = 19.65 # in millimeters
+camera_claw_real_offset = 34.5 # in millimeters
 
 def center_offset_calculations(index, xyxy):
     """
@@ -43,7 +67,8 @@ def center_offset_calculations(index, xyxy):
 
     x_real_offset, y_real_offset = convert_pixels_to_millimeters(x_offset, y_offset, l, t, r, b)
 
-    return x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset
+    # IMPORTANT: X AND Y ARE FLIPPED B/C ARM HAS OPPOSITE AXES FROM CAMERA
+    return y_offset, x_offset, ocenter_x, ocenter_y, y_real_offset, x_real_offset
 
 def bbox_center(l, t, r, b):
     center_x = l + ((r-l) / 2)
@@ -56,6 +81,30 @@ def convert_pixels_to_millimeters(pixel_x, pixel_y, l, t, r, b):
     y_real = pixel_y * test_tube_diameter / (b - t) # pixels * millimeters / vertical bbox pixels
     return x_real, y_real
 
+def parse_get_pose(return_msg):
+    """
+    Parse the return message from GetPose() to extract the Cartesian coordinates.
+
+    Parameters:
+    return_msg (str): The return message string from GetPose()
+
+    Returns:
+    tuple: a tuple containing x, y, z, and r values.
+    """
+    try:
+        # Extract the substring containing the coordinates
+        coords_list = return_msg.split(",")[1:5]        
+        coords_list[0] = coords_list[0].strip("{")
+
+        # Convert the string values to floats
+        x, y, z, r = map(float, coords_list)
+
+        # Return the coordinates in a dictionary
+        return x, y, z, r
+    except (IndexError, ValueError) as e:
+        print(f"Error parsing return message: {e}")
+        return None
+    
 # Load a model
 model = YOLO("yolo_models/yolov8_best.pt")
 
@@ -69,6 +118,13 @@ if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()
 
+# Connect to robot arm
+dashboard, move, feed = connect_robot()
+
+# Initialize robot arm
+load=0.400 # around the total load the end effector will be handling, in kilograms
+dashboard.EnableRobot(load)
+
 # Loop to continuously get frames from the webcam
 while True:
     success, frame = cap.read()  # Capture frame-by-frame
@@ -80,7 +136,7 @@ while True:
     # Run YOLOv8 tracking on the frame, persisting tracks between frames
     results = model.track(frame, persist=True, verbose=False)
 
-    # Get the boxes and track IDs
+        # Get the boxes and track IDs
     bboxes_coord = results[0].boxes.xyxy
     if len(bboxes_coord) > 0:
         x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
@@ -92,14 +148,33 @@ while True:
         ocenter_x = int(ocenter_x.item())
         ocenter_y = int(ocenter_y.item())
 
-        scale_factor_x = 10/6
-        scale_factor_y = 3/5
+        #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
+        print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
-        x_real_offset *= scale_factor_x
-        y_real_offset *= scale_factor_y
+        # Get current pose
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        
+        userparam="User=2"
+        x_movement = 0
+        y_movement = 0
+        # X AXIS MOVEMENT
+        if(x_offset > 1):
+            # If x offset of the camera is positive, decrease current x value
+            x_movement -= 0.5 * abs(x_real_offset)   
+        elif (x_offset < -1):
+            # If x offset of the camera is negative, increase current x value
+            x_movement += 0.5 * abs(x_real_offset)
+        # Y AXIS MOVEMENT
+        if(y_offset > 1):
+             # If y offset of the camera is positive, decrease current y value
+            y_movement -= 0.5 * abs(y_real_offset)
+        elif(y_offset < -1):
+             # If y offset of the camera is negative, increase current y value
+            y_movement += 0.5 * abs(y_real_offset)
 
-        print(f"DOBOT X: {y_real_offset}, Y: {x_real_offset}") # FLIP X AND Y BECAUSE ARM REFERENCE DIFFERENT FROM CAMERA REFERENCE
-
+        # Run MovL
+        move.MovL(x + x_movement, y + y_movement, z, r, userparam)
+               
         #(results[0].boxes.id is not None):
             #print(f"id: {results[0].boxes.id[0]} ox: {ocenter_x}, oy: {ocenter_y}")
             #print(results[0].boxes.id)

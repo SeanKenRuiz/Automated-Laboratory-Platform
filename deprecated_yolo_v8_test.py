@@ -5,56 +5,31 @@ from ultralytics import YOLO
 from ultralytics import trackers
 import torch
 
-global tracking_index
+global tracking_id
+tracking_id = 0
 tracking_index = 0
 
-test_tube_diameter = 11 # in millimeters
-empty_holder_diameter = 11 # in millimeters
-dist_between_tubes = 19.65
-
 def center_offset_calculations(index, xyxy):
-    """
-    Input: results[0].boxes.xyxy, type: tensor
-    Output: 
-    x offset from camera center, in pixels
-    y offset from camera center, in pixels
-    object center x value, in pixels
-    object center y value, in pixels
-
-    x offset from camera center, in millimeters
-    y offset from camera center, in millimeters
-    """
-
+    # Input: results[0].boxes.xyxy, type: tensor
+    # Output: x and y offset from camera center
     ccenter_y = 240
     ccenter_x = 320
 
-    l = xyxy[index, 0]
-    t = xyxy[index, 1]
-    r = xyxy[index, 2]
-    b = xyxy[index, 3]
-
-    # get b
-    ocenter_xy = bbox_center(l, t, r, b)
+    print(xyxy[index])
+    ocenter_xy = bbox_center(xyxy[index, 0], xyxy[index, 1], xyxy[index, 2], xyxy[index, 3])
 
     ocenter_x, ocenter_y = ocenter_xy
 
     x_offset = ocenter_x - ccenter_x
     y_offset = ocenter_y - ccenter_y
 
-    x_real_offset, y_real_offset = convert_pixels_to_millimeters(x_offset, y_offset, l, t, r, b)
-
-    return x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset
+    return x_offset, y_offset, ocenter_x, ocenter_y
 
 def bbox_center(l, t, r, b):
     center_x = l + ((r-l) / 2)
     center_y = t + ((b-t) / 2)
 
     return center_x, center_y
-
-def convert_pixels_to_millimeters(pixel_x, pixel_y, l, t, r, b):
-    x_real = pixel_x * test_tube_diameter / (r - l) # pixels * millimeters / horizontal bbox pixels
-    y_real = pixel_y * test_tube_diameter / (b - t) # pixels * millimeters / vertical bbox pixels
-    return x_real, y_real
 
 # Load a model
 model = YOLO("yolo_models/yolov8_best.pt")
@@ -63,7 +38,7 @@ model = YOLO("yolo_models/yolov8_best.pt")
 track_history = defaultdict(lambda: [])
 
 # Open a connection to the webcam
-cap = cv.VideoCapture(1)
+cap = cv.VideoCapture(0)
 
 if not cap.isOpened():
     print("Error: Could not open webcam.")
@@ -82,27 +57,20 @@ while True:
 
     # Get the boxes and track IDs
     bboxes_coord = results[0].boxes.xyxy
-    if len(bboxes_coord) > 0:
-        x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
+    if len(bboxes_coord) > 0 and len(results[0].boxes.id[tracking_index]) > 0:
+        x_offset, y_offset, ocenter_x, ocenter_y = center_offset_calculations(tracking_index, bboxes_coord)
 
         # Visualize the results on the frame
         annotated_frame = results[0].plot()
 
         # Convert tensor values to integers
+        print(ocenter_x)
         ocenter_x = int(ocenter_x.item())
         ocenter_y = int(ocenter_y.item())
 
-        scale_factor_x = 10/6
-        scale_factor_y = 3/5
-
-        x_real_offset *= scale_factor_x
-        y_real_offset *= scale_factor_y
-
-        print(f"DOBOT X: {y_real_offset}, Y: {x_real_offset}") # FLIP X AND Y BECAUSE ARM REFERENCE DIFFERENT FROM CAMERA REFERENCE
-
-        #(results[0].boxes.id is not None):
-            #print(f"id: {results[0].boxes.id[0]} ox: {ocenter_x}, oy: {ocenter_y}")
-            #print(results[0].boxes.id)
+        if results[0].boxes.id is not None:
+            tracking_index = torch.where(torch.squeeze(results[0].boxes.id) == tracking_id) # <------ PROBLEM HERE
+            print(f"id: {results[0].boxes.id[0]} ox: {ocenter_x}, oy: {ocenter_y}")
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
