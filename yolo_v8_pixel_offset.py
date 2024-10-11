@@ -11,6 +11,7 @@ tracking_index = 0
 test_tube_diameter = 11 # in millimeters
 empty_holder_diameter = 11 # in millimeters
 dist_between_tubes = 19.65
+camera_claw_real_offset = 34.5 # in millimeters
 
 def center_offset_calculations(index, xyxy):
     """
@@ -43,7 +44,8 @@ def center_offset_calculations(index, xyxy):
 
     x_real_offset, y_real_offset = convert_pixels_to_millimeters(x_offset, y_offset, l, t, r, b)
 
-    return x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset
+    # IMPORTANT: X AND Y ARE FLIPPED B/C ARM HAS OPPOSITE AXES FROM CAMERA
+    return y_offset, x_offset, ocenter_x, ocenter_y, y_real_offset, x_real_offset
 
 def bbox_center(l, t, r, b):
     center_x = l + ((r-l) / 2)
@@ -98,7 +100,7 @@ while True:
         x_real_offset *= scale_factor_x
         y_real_offset *= scale_factor_y
 
-        print(f"PIXEL OFFSET X: {y_offset}, Y: {x_offset}") # FLIP X AND Y BECAUSE ARM REFERENCE DIFFERENT FROM CAMERA REFERENCE
+        print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
 
         #(results[0].boxes.id is not None):
             #print(f"id: {results[0].boxes.id[0]} ox: {ocenter_x}, oy: {ocenter_y}")

@@ -33,6 +33,7 @@ class PDController:
         self.previous_error = error
         self.previous_time = current_time
 
+        time.sleep(0.5)
         return p_term + d_term
 
 # Connecting to robot arm
@@ -76,6 +77,7 @@ def center_offset_calculations(index, xyxy):
     ccenter_y = 240
     ccenter_x = 320
 
+    print(xyxy.shape)
     l = xyxy[index, 0]
     t = xyxy[index, 1]
     r = xyxy[index, 2]
@@ -117,8 +119,9 @@ def parse_get_pose(return_msg):
     """
     try:
         # Extract the substring containing the coordinates
-        coords_list = return_msg.split(",")[1:5]        
+        coords_list = return_msg.split(",")[1:5]  
         coords_list[0] = coords_list[0].strip("{")
+        print(coords_list) 
 
         # Convert the string values to floats
         x, y, z, r = map(float, coords_list)
@@ -149,8 +152,18 @@ dashboard, move, feed = connect_robot()
 load=0.400 # around the total load the end effector will be handling, in kilograms
 dashboard.EnableRobot(load)
 
-x_controller = PDController(0.8, 0.1)
-y_controller = PDController(0.8, 0.1)
+x_controller = PDController(0.9, 0.1)
+y_controller = PDController(0.9, 0.1)
+
+# Run MovL
+userparam="User=0"
+# Home 274, 10, 130, -180
+x = 274
+y = 10
+z = 110
+r = -180
+move.MovL(x, y, z, r, userparam)
+previous_x, previous_y, previous_z, previous_r = x, y, z, r
 
 # Loop to continuously get frames from the webcam
 while True:
@@ -163,9 +176,9 @@ while True:
     # Run YOLOv8 tracking on the frame, persisting tracks between frames
     results = model.track(frame, persist=True, verbose=False)
 
-        # Get the boxes and track IDs
-    bboxes_coord = results[0].boxes.xyxy
-    if len(bboxes_coord) > 0:
+    # Get the boxes and track IDs
+    if len(results[0].boxes) > 0 and len(results[0].boxes.xyxy) > 0:
+        bboxes_coord = results[0].boxes.xyxy
         x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
 
         # Visualize the results on the frame
@@ -178,36 +191,29 @@ while True:
         #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
+        User=2
+        Tool=0
         # Get current pose
-        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        if(parse_get_pose(dashboard.GetPose()) != None):
+            x, y, z, r = parse_get_pose(dashboard.GetPose())
+            previous_x, previous_y, previous_z, previous_r = x, y, z, r
+        else:
+            # Keep previous pose
+            x = previous_x
+            y = previous_y
+            z = previous_z
+            r = previous_r
+
         
-        userparam="User=2"
         x_movement = 0
         y_movement = 0
 
         x_movement = x_controller.compute(x_real_offset) * -1
         y_movement = y_controller.compute(y_real_offset) * -1
-        # X AXIS MOVEMENT
-        # if(x_offset > 1):
-        #     # If x offset of the camera is positive, decrease current x value
-        #     x_movement -= 0.5 * abs(x_real_offset)   
-        # elif (x_offset < -1):
-        #     # If x offset of the camera is negative, increase current x value
-        #     x_movement += 0.5 * abs(x_real_offset)
-        # # Y AXIS MOVEMENT
-        # if(y_offset > 1):
-        #      # If y offset of the camera is positive, decrease current y value
-        #     y_movement -= 0.5 * abs(y_real_offset)
-        # elif(y_offset < -1):
-        #      # If y offset of the camera is negative, increase current y value
-        #     y_movement += 0.5 * abs(y_real_offset)
 
         # Run MovL
+        userparam="User=0"
         move.MovL(x + x_movement, y + y_movement, z, r, userparam)
-               
-        #(results[0].boxes.id is not None):
-            #print(f"id: {results[0].boxes.id[0]} ox: {ocenter_x}, oy: {ocenter_y}")
-            #print(results[0].boxes.id)
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
@@ -225,6 +231,8 @@ while True:
     # Break the loop if 'q' is pressed
     if cv.waitKey(1) & 0xFF == ord("q"):
         break
+
+    #time.sleep(5)
 
 # Release the webcam and close the window
 cap.release()
