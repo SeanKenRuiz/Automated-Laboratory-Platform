@@ -43,8 +43,30 @@ if __name__ == '__main__':
     status=0
     dashboard.DO(index,status)  
 
-    dashboard.User(0)
-    dashboard.GetPose()
-    dashboard.User(2)
+    for i in range(0, 2):
+        # Home 274, 10, 130, -180
+        x = 274
+        y = 10
+        z = 70
+        r = -180
+        userparam="User=0"
+        move.MovL(x, y, z, r,userparam)
+
+        # Home 274, 10, 130, -180
+        x = 274
+        y = 10
+        z = 110
+        r = -180
+        userparam="User=0"
+        move.MovL(x, y, z, r,userparam)
+
+        # Home 274, 10, 130, -180
+        x = 274
+        y = 10
+        z = 70
+        r = -180
+        userparam="User=0"
+        move.MovL(x, y, z, r,userparam)
+
     dashboard.GetPose()
     

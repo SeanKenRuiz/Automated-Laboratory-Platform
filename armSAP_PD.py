@@ -59,7 +59,6 @@ tracking_index = 0
 test_tube_diameter = 11 # in millimeters
 empty_holder_diameter = 11 # in millimeters
 dist_between_tubes = 19.65 # in millimeters
-camera_claw_real_offset = 34.5 # in millimeters
 
 def center_offset_calculations(index, xyxy):
     """
@@ -132,6 +131,30 @@ def parse_get_pose(return_msg):
         print(f"Error parsing return message: {e}")
         return None
     
+def perform_grab(x, y, z, r):
+    # End effector offset values from target destination
+    # MAKE SURE TO CALIBRATE THESE VALUES IF WEBCAM IS EVER UNMOUNTED
+    # x - 28, y - 2, z = -90, r = -180
+    userparam="User=0"
+    if(parse_get_pose(dashboard.GetPose()) != None):
+                x, y, z, r = parse_get_pose(dashboard.GetPose())
+    else:
+         return
+    x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
+    y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
+    z = -90 # TEST TUBE Y OFFSET
+    r -= 180
+    if(action == 1):
+        move.MovL(x, y, z, r, userparam)
+
+test_tube_positions = {}
+def save_position(id):
+    print("Position saved: ")
+    if(parse_get_pose(dashboard.GetPose()) != None):
+                x, y, z, r = parse_get_pose(dashboard.GetPose())
+    else:
+        return None
+    
 # Load a model
 model = YOLO("yolo_models/yolov8_best.pt")
 
@@ -165,6 +188,14 @@ r = -180
 move.MovL(x, y, z, r, userparam)
 previous_x, previous_y, previous_z, previous_r = x, y, z, r
 
+# Open gripper
+index=1
+status=1
+dashboard.DO(index,status)
+
+# Set action to tracking
+action = 0
+
 # Loop to continuously get frames from the webcam
 while True:
     success, frame = cap.read()  # Capture frame-by-frame
@@ -191,29 +222,37 @@ while True:
         #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
-        User=2
-        Tool=0
-        # Get current pose
-        if(parse_get_pose(dashboard.GetPose()) != None):
-            x, y, z, r = parse_get_pose(dashboard.GetPose())
-            previous_x, previous_y, previous_z, previous_r = x, y, z, r
-        else:
-            # Keep previous pose
-            x = previous_x
-            y = previous_y
-            z = previous_z
-            r = previous_r
+        if(action == 0):
+            #
+            #
+            ## Search code start
+            User=2
+            Tool=0
+            # Get current pose
+            if(parse_get_pose(dashboard.GetPose()) != None):
+                x, y, z, r = parse_get_pose(dashboard.GetPose())
+                previous_x, previous_y, previous_z, previous_r = x, y, z, r
+            else:
+                # Keep previous pose
+                x = previous_x
+                y = previous_y
+                z = previous_z
+                r = previous_r
 
-        
-        x_movement = 0
-        y_movement = 0
+            
+            x_movement = 0
+            y_movement = 0
 
-        x_movement = x_controller.compute(x_real_offset) * -1
-        y_movement = y_controller.compute(y_real_offset) * -1
+            x_movement = x_controller.compute(x_real_offset) * -1
+            y_movement = y_controller.compute(y_real_offset) * -1
 
-        # Run MovL
-        userparam="User=0"
-        move.MovL(x + x_movement, y + y_movement, z, r, userparam)
+            # Run MovL
+            userparam="User=0"
+            move.MovL(x + x_movement, y + y_movement, z, r, userparam)
+
+            ## Search END
+            #
+            #
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
@@ -224,12 +263,17 @@ while True:
         print("No bounding boxes detected.")
         cv.imshow('YOLOv8 Webcam', frame)
 
+    # If w is pressed, allow user to change action
+    if cv.waitKey(1) & 0xFF == ord("a"):
+        print("0 for tracking, 1 for grabbing, 2 for placing")
+        action = int(input("Enter an action integer: "))
+
     # If w is pressed, allow user to change tracking index
-    if cv.waitKey(1) & 0xFF == ord("w"):
+    elif cv.waitKey(1) & 0xFF == ord("w"):
         tracking_index = int(input("Enter tracking index: "))
 
     # Break the loop if 'q' is pressed
-    if cv.waitKey(1) & 0xFF == ord("q"):
+    elif cv.waitKey(1) & 0xFF == ord("q"):
         break
 
     #time.sleep(5)
