@@ -140,14 +140,15 @@ def perform_grab(x, y, z, r):
                 x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
          return
-    x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
-    y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
-    z = -90 # TEST TUBE Y OFFSET
-    r -= 180
-    if(action == 1):
-        move.MovL(x, y, z, r, userparam)
+    # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
+    # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
+    x -= 29
+    y -= 2.5
+    z = -75 # TEST TUBE Y OFFSET
+    r = -180
+    move.MovL(x, y, z, r, userparam)
 
-test_tube_positions = {}
+test_tube_positions = {} 
 def save_position(id):
     print("Position saved: ")
     if(parse_get_pose(dashboard.GetPose()) != None):
@@ -216,8 +217,9 @@ while True:
         annotated_frame = results[0].plot()
 
         # Convert tensor values to integers
-        ocenter_x = int(ocenter_x.item())
-        ocenter_y = int(ocenter_y.item())
+        if(torch.is_tensor(ocenter_x)):
+            ocenter_x = int(ocenter_x.item())
+            ocenter_y = int(ocenter_y.item())
 
         #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
@@ -248,11 +250,20 @@ while True:
 
             # Run MovL
             userparam="User=0"
-            move.MovL(x + x_movement, y + y_movement, z, r, userparam)
-
+            if(z > -65):
+                move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
+            else: 
+                move.MovL(x + x_movement, y + y_movement, z, r, userparam)
             ## Search END
             #
             #
+
+        elif(action == 1):
+            perform_grab(x, y, z, r)
+            # Close gripper
+            # index=1
+            # status=0
+            # dashboard.DO(index,status)
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)

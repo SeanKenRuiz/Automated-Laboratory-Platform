@@ -53,8 +53,8 @@ def connect_robot():
         print(":( Connection failed :(")
         raise e
     
-global tracking_index
-tracking_index = 0
+global tracking_id
+tracking_id = 1
 
 test_tube_diameter = 11 # in millimeters
 empty_holder_diameter = 11 # in millimeters
@@ -140,14 +140,28 @@ def perform_grab(x, y, z, r):
                 x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
          return
-    x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
-    y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
-    z = -90 # TEST TUBE Y OFFSET
-    r -= 180
-    if(action == 1):
-        move.MovL(x, y, z, r, userparam)
+    # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
+    # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
+    x -= 29
+    y -= 2.5
+    r = -180
+    move.MovL(x, y, z, r, userparam)
+    
+    finalize = int(input("Enter 0 to CANCEL grab, enter 1 to EXECUTE grab: "))
+    if(finalize):
+        z = -90 # TEST TUBE Y OFFSET
+        move.MovL(x, y, z, r)
+    
+    # Close gripper
+    index=1
+    status=0
+    dashboard.DO(index,status)
 
-def manual_control(x, y, z, r):
+    move.MovL(x, y, z + 70, r)
+    global tracking_id
+    save_position(tracking_id)
+
+def perform_place(x, y, z, r):
     # End effector offset values from target destination
     # MAKE SURE TO CALIBRATE THESE VALUES IF WEBCAM IS EVER UNMOUNTED
     # x - 28, y - 2, z = -90, r = -180
@@ -156,18 +170,33 @@ def manual_control(x, y, z, r):
                 x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
          return
-    x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
-    y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
-    z = -90 # TEST TUBE Y OFFSET
-    r -= 180
-    if(action == 1):
-        move.MovL(x, y, z, r, userparam)
+    # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
+    # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
+    x -= 29
+    y -= 2.5
+    r = -180
+    move.MovL(x, y, z, r, userparam)
+    
+    finalize = int(input("Enter 0 to CANCEL release, enter 1 to EXECUTE release: "))
+    if(finalize):
+        z = -25 # TEST TUBE Y OFFSET
+        move.MovL(x, y, z, r)
+    
+    # Open gripper
+    index=1
+    status=1
+    dashboard.DO(index,status)
+
+    move.MovL(x, y, z + 70, r)
+    global tracking_id
+    save_position(tracking_id)
 
 test_tube_positions = {} 
 def save_position(id):
     print("Position saved: ")
     if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        test_tube_positions[id] = x, y, z, r
     else:
         return None
     
@@ -226,14 +255,20 @@ while True:
     # Get the boxes and track IDs
     if len(results[0].boxes) > 0 and len(results[0].boxes.xyxy) > 0:
         bboxes_coord = results[0].boxes.xyxy
+
+        if((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0):
+            tracking_index = ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].item())
+        else:
+            tracking_index = 0
         x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
 
         # Visualize the results on the frame
         annotated_frame = results[0].plot()
 
         # Convert tensor values to integers
-        ocenter_x = int(ocenter_x.item())
-        ocenter_y = int(ocenter_y.item())
+        if(torch.is_tensor(ocenter_x)):
+            ocenter_x = int(ocenter_x.item())
+            ocenter_y = int(ocenter_y.item())
 
         #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
@@ -264,11 +299,17 @@ while True:
 
             # Run MovL
             userparam="User=0"
-            move.MovL(x + x_movement, y + y_movement, z, r, userparam)
-
+            if(z > -65 and z_decrement == True):
+                move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
+            else: 
+                move.MovL(x + x_movement, y + y_movement, z, r, userparam)
             ## Search END
             #
             #
+
+        elif(action == 1):
+            perform_grab(x, y, z, r)
+            
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
@@ -283,25 +324,10 @@ while True:
     if cv.waitKey(1) & 0xFF == ord("a"):
         print("0 for tracking, 1 for grabbing, 2 for placing")
         action = int(input("Enter an action integer: "))
-        if(action == -1):
-            userparam="User=0"
-            x_movement = float(input("X Movement: "))
-            y_movement = float(input("y Movement: "))
-            z = float(input("z coordinate: "))
-            move.MovL(x + x_movement, y + y_movement, z, -180, userparam)
-            if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
-                previous_x, previous_y, previous_z, previous_r = x, y, z, r
-            else:
-                # Keep previous pose
-                x = previous_x
-                y = previous_y
-                z = previous_z
-                r = previous_r
 
     # If w is pressed, allow user to change tracking index
     elif cv.waitKey(1) & 0xFF == ord("w"):
-        tracking_index = int(input("Enter tracking index: "))
+        tracking_id = int(input("Enter tracking ID: "))
 
     # Break the loop if 'q' is pressed
     elif cv.waitKey(1) & 0xFF == ord("q"):
