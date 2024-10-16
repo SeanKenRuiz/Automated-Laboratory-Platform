@@ -10,7 +10,8 @@ tracking_index = 0
 
 test_tube_diameter = 11 # in millimeters
 empty_holder_diameter = 11 # in millimeters
-dist_between_tubes = 19.65
+dist_between_tubes = 19.65 # in millimeters
+camera_claw_real_offset = 34.5 # in millimeters
 
 def center_offset_calculations(index, xyxy):
     """
@@ -33,7 +34,7 @@ def center_offset_calculations(index, xyxy):
     r = xyxy[index, 2]
     b = xyxy[index, 3]
 
-    # get b
+    # get bbox center from the left, top, right, bottom coordinates (x, y, x, y)
     ocenter_xy = bbox_center(l, t, r, b)
 
     ocenter_x, ocenter_y = ocenter_xy
@@ -82,6 +83,7 @@ while True:
 
     # Get the boxes and track IDs
     bboxes_coord = results[0].boxes.xyxy
+    print(results[0])
     if len(bboxes_coord) > 0:
         x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
 

@@ -200,6 +200,20 @@ def save_position(id):
     else:
         return None
     
+global home_frame
+def set_home_frame(bounding_box_tensor_tuple):
+    global home_frame
+    home_frame = bounding_box_tensor_tuple
+
+global home_x, home_y, home_z
+home_r = -180
+def set_home_position(arm_position):
+    if(parse_get_pose(dashboard.GetPose()) != None):
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
+    else:
+        print("setting home position failed... attempting again")
+        set_home_position()
+    
 # Load a model
 model = YOLO("yolo_models/yolov8_best.pt")
 
@@ -240,6 +254,7 @@ dashboard.DO(index,status)
 
 # Set action to tracking
 action = 0
+z_decrement = False
 
 # Loop to continuously get frames from the webcam
 while True:
