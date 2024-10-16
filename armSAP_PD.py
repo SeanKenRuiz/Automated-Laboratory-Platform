@@ -137,9 +137,9 @@ def perform_grab(x, y, z, r):
     # x - 28, y - 2, z = -90, r = -180
     userparam="User=0"
     if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
-         return
+        return
     # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
     # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
     x -= 25
@@ -157,7 +157,10 @@ def perform_grab(x, y, z, r):
     status=0
     dashboard.DO(index,status)
 
+    # Clear the area
     move.MovL(x, y, z + 70, r)
+
+    # Save position hovering over tube
     global tracking_id
     save_position(tracking_id)
 
@@ -167,14 +170,14 @@ def perform_place(x, y, z, r):
     # x - 28, y - 2, z = -90, r = -180
     userparam="User=0"
     if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
-         return
+        return
     # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
     # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
-    x -= 29
-    y -= 2.5
-    r = -186
+    x -= 25
+    y += 1.7
+    r = -185
     move.MovL(x, y, z, r, userparam)
     
     finalize = int(input("Enter 0 to CANCEL release, enter 1 to EXECUTE release: "))
@@ -200,20 +203,19 @@ def save_position(id):
     else:
         return None
     
-global home_frame
-def set_home_frame(bounding_box_tensor_tuple):
-    global home_frame
-    home_frame = bounding_box_tensor_tuple
-
 global home_x, home_y, home_z
 home_r = -186
+global home_frame
 
-def set_home_position(arm_position):
+def set_home_position_and_frame(bounding_box_tensor_tuple):
+    global home_frame
+    global home_x, home_y, home_z
+    home_frame = bounding_box_tensor_tuple
     if(parse_get_pose(dashboard.GetPose()) != None):
-        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        home_x, home_y, home_z, _ = parse_get_pose(dashboard.GetPose())
     else:
         print("setting home position failed... attempting again")
-        set_home_position()
+        set_home_position_and_frame()
     
 # Load a model
 model = YOLO("yolo_models/yolov8_best.pt")
@@ -255,7 +257,41 @@ dashboard.DO(index,status)
 
 # Set action to tracking
 action = 0
-z_decrement = False
+
+def search(x_real_offset, y_real_offset, z_decrement):
+    #
+    #
+    ## Search code start
+    User=2
+    Tool=0
+    # Get current pose
+    if(parse_get_pose(dashboard.GetPose()) != None):
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        global previous_x, previous_y, previous_z, previous_r
+        previous_x, previous_y, previous_z, previous_r = x, y, z, r
+    else:
+        # Keep previous pose
+        x = previous_x
+        y = previous_y
+        z = previous_z
+        r = previous_r
+
+    
+    x_movement = 0
+    y_movement = 0
+
+    x_movement = x_controller.compute(x_real_offset) * -1
+    y_movement = y_controller.compute(y_real_offset) * -1
+
+    # Run MovL
+    userparam="User=0"
+    if(z > -65 and z_decrement == True):
+        move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
+    else: 
+        move.MovL(x + x_movement, y + y_movement, z, r, userparam)
+    ## Search END
+    #
+    #
 
 # Loop to continuously get frames from the webcam
 while True:
@@ -289,43 +325,19 @@ while True:
         #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
-        if(action == 0):
-            #
-            #
-            ## Search code start
-            User=2
-            Tool=0
-            # Get current pose
-            if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
-                previous_x, previous_y, previous_z, previous_r = x, y, z, r
-            else:
-                # Keep previous pose
-                x = previous_x
-                y = previous_y
-                z = previous_z
-                r = previous_r
-
-            
-            x_movement = 0
-            y_movement = 0
-
-            x_movement = x_controller.compute(x_real_offset) * -1
-            y_movement = y_controller.compute(y_real_offset) * -1
-
-            # Run MovL
-            userparam="User=0"
-            if(z > -65 and z_decrement == True):
-                move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
-            else: 
-                move.MovL(x + x_movement, y + y_movement, z, r, userparam)
-            ## Search END
-            #
-            #
-
-        elif(action == 1):
+        # Action states
+        if(action == 0): # Searching
+            search(x_real_offset, y_real_offset, z_decrement=True)
+        elif(action == 1): # Grabbing
             perform_grab(x, y, z, r)
-            
+        elif(action == 2): # Placing
+            perform_place(x, y, z, r)
+
+        elif(action == 3): # Set home position and frame
+            set_home_position_and_frame(results[0].boxes)
+        elif(action == 4): # Load home position and frame
+            x, y, z, r = home_x, home_y, home_z, home_r
+            results[0].boxes = home_frame
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
@@ -338,7 +350,7 @@ while True:
 
     # If w is pressed, allow user to change action
     if cv.waitKey(1) & 0xFF == ord("a"):
-        print("0 for tracking, 1 for grabbing, 2 for placing")
+        print("0 for tracking, 1 for grabbing, 2 for placing, 3 to set home, 4 to load home")
         action = int(input("Enter an action integer: "))
 
     # If w is pressed, allow user to change tracking index

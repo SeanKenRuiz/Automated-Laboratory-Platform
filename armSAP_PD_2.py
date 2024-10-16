@@ -246,6 +246,7 @@ y = 10
 z = 110
 r = -186
 move.MovL(x, y, z, r, userparam)
+global previous_x, previous_y, previous_z, previous_r
 previous_x, previous_y, previous_z, previous_r = x, y, z, r
 
 # Open gripper
@@ -255,7 +256,41 @@ dashboard.DO(index,status)
 
 # Set action to tracking
 action = 0
-z_decrement = False
+
+def search(x_real_offset, y_real_offset, z_decrement):
+    #
+    #
+    ## Search code start
+    User=2
+    Tool=0
+    # Get current pose
+    if(parse_get_pose(dashboard.GetPose()) != None):
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        global previous_x, previous_y, previous_z, previous_r
+        previous_x, previous_y, previous_z, previous_r = x, y, z, r
+    else:
+        # Keep previous pose
+        x = previous_x
+        y = previous_y
+        z = previous_z
+        r = previous_r
+
+    
+    x_movement = 0
+    y_movement = 0
+
+    x_movement = x_controller.compute(x_real_offset) * -1
+    y_movement = y_controller.compute(y_real_offset) * -1
+
+    # Run MovL
+    userparam="User=0"
+    if(z > -65 and z_decrement == True):
+        move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
+    else: 
+        move.MovL(x + x_movement, y + y_movement, z, r, userparam)
+    ## Search END
+    #
+    #
 
 # Loop to continuously get frames from the webcam
 while True:
@@ -290,39 +325,7 @@ while True:
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
         if(action == 0):
-            #
-            #
-            ## Search code start
-            User=2
-            Tool=0
-            # Get current pose
-            if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
-                previous_x, previous_y, previous_z, previous_r = x, y, z, r
-            else:
-                # Keep previous pose
-                x = previous_x
-                y = previous_y
-                z = previous_z
-                r = previous_r
-
-            
-            x_movement = 0
-            y_movement = 0
-
-            x_movement = x_controller.compute(x_real_offset) * -1
-            y_movement = y_controller.compute(y_real_offset) * -1
-
-            # Run MovL
-            userparam="User=0"
-            if(z > -65 and z_decrement == True):
-                move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
-            else: 
-                move.MovL(x + x_movement, y + y_movement, z, r, userparam)
-            ## Search END
-            #
-            #
-
+            search(x_real_offset, y_real_offset, z_decrement=False)
         elif(action == 1):
             perform_grab(x, y, z, r)
             
