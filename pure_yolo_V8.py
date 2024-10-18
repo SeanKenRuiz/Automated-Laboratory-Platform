@@ -110,7 +110,8 @@ while True:
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
 
         # Display the resulting frame
-        cv.imshow('YOLOv8 Webcam', annotated_frame)
+        cv.imshow('YOLOv8 Webcam 2', annotated_frame)
+        cv.imshow('YOLOv8 Webcam 1', frame)
     else:
         print("No bounding boxes detected.")
         cv.imshow('YOLOv8 Webcam', frame)

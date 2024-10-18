@@ -33,7 +33,7 @@ class PDController:
         self.previous_error = error
         self.previous_time = current_time
 
-        time.sleep(0.5)
+        # time.sleep(0.5)
         return p_term + d_term
 
 # Connecting to robot arm
@@ -145,24 +145,26 @@ def perform_grab(x, y, z, r):
     x -= 25
     y += 1.7
     r = -185
-    move.MovL(x, y, z, r, userparam)
+    move.MovL(x, y, -65, r, userparam)
     
     finalize = int(input("Enter 0 to CANCEL grab, enter 1 to EXECUTE grab: "))
     if(finalize):
         z = -90 # TEST TUBE Y OFFSET
         move.MovL(x, y, z, r)
     
-    # Close gripper
-    index=1
-    status=0
-    dashboard.DO(index,status)
+        # Close gripper
+        index=1
+        status=0
+        dashboard.DO(index,status)
+
+        move.MovL(x, y, z + 70, r, userparam)
+        # Save position hovering over tube
+        global tracking_id
+        save_position(tracking_id)
+        print(test_tube_positions)
 
     # Clear the area
-    move.MovL(x, y, z + 70, r)
-
-    # Save position hovering over tube
-    global tracking_id
-    save_position(tracking_id)
+    move.MovL(x, y, 110, r, userparam)
 
 def perform_place(x, y, z, r):
     # End effector offset values from target destination
@@ -178,21 +180,23 @@ def perform_place(x, y, z, r):
     x -= 25
     y += 1.7
     r = -185
-    move.MovL(x, y, z, r, userparam)
+    move.MovL(x, y, -20, r, userparam)
     
     finalize = int(input("Enter 0 to CANCEL release, enter 1 to EXECUTE release: "))
     if(finalize):
-        z = -25 # TEST TUBE Y OFFSET
+        z = -75 # TEST TUBE Y OFFSET
         move.MovL(x, y, z, r)
     
-    # Open gripper
-    index=1
-    status=1
-    dashboard.DO(index,status)
+        # Open gripper
+        index=1
+        status=1
+        dashboard.DO(index,status)
 
-    move.MovL(x, y, z + 70, r)
+    # Retract arm
+    move.MovL(x, y, 110, r)
     global tracking_id
     save_position(tracking_id)
+    print(test_tube_positions)
 
 test_tube_positions = {} 
 def save_position(id):
@@ -243,6 +247,7 @@ y_controller = PDController(0.9, 0.1)
 # Run MovL
 userparam="User=0"
 # Home 274, 10, 130, -180
+global x, y, z, r
 x = 274
 y = 10
 z = 110
@@ -258,14 +263,17 @@ dashboard.DO(index,status)
 # Set action to tracking
 action = 0
 
+dashboard.User(0)
+dashboard.Tool(0)
+
 def search(x_real_offset, y_real_offset, z_decrement):
     #
     #
     ## Search code start
-    User=2
-    Tool=0
+
     # Get current pose
     if(parse_get_pose(dashboard.GetPose()) != None):
+        global x, y, z, r
         x, y, z, r = parse_get_pose(dashboard.GetPose())
         global previous_x, previous_y, previous_z, previous_r
         previous_x, previous_y, previous_z, previous_r = x, y, z, r
@@ -283,6 +291,7 @@ def search(x_real_offset, y_real_offset, z_decrement):
     x_movement = x_controller.compute(x_real_offset) * -1
     y_movement = y_controller.compute(y_real_offset) * -1
 
+    move.Sync()
     # Run MovL
     userparam="User=0"
     if(z > -65 and z_decrement == True):
@@ -292,6 +301,8 @@ def search(x_real_offset, y_real_offset, z_decrement):
     ## Search END
     #
     #
+
+z_decrement = 0
 
 # Loop to continuously get frames from the webcam
 while True:
@@ -327,17 +338,21 @@ while True:
 
         # Action states
         if(action == 0): # Searching
-            search(x_real_offset, y_real_offset, z_decrement=True)
+            search(x_real_offset, y_real_offset, z_decrement)
         elif(action == 1): # Grabbing
             perform_grab(x, y, z, r)
+            action = -1
         elif(action == 2): # Placing
             perform_place(x, y, z, r)
-
+            action = -1
         elif(action == 3): # Set home position and frame
             set_home_position_and_frame(results[0].boxes)
+            action = -1
         elif(action == 4): # Load home position and frame
             x, y, z, r = home_x, home_y, home_z, home_r
+            move.MovL(x, y, z, r, userparam)
             results[0].boxes = home_frame
+            action = -1
 
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
@@ -352,6 +367,19 @@ while True:
     if cv.waitKey(1) & 0xFF == ord("a"):
         print("0 for tracking, 1 for grabbing, 2 for placing, 3 to set home, 4 to load home")
         action = int(input("Enter an action integer: "))
+        move.Sync()
+        if(action == 0):
+            z_decrement = int(input("z_decrement: 0 for off, 1 for on"))
+        # if(action == 0):
+        #     # Run MovL
+        #     userparam="User=0"
+        #     # Home 274, 10, 130, -180
+        #     x = 274
+        #     y = 10
+        #     z = 110
+        #     r = -186
+        #     move.MovL(x, y, z, r, userparam)
+        #     previous_x, previous_y, previous_z, previous_r = x, y, z, r
 
     # If w is pressed, allow user to change tracking index
     elif cv.waitKey(1) & 0xFF == ord("w"):

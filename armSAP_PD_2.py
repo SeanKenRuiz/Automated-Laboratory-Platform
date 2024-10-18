@@ -33,7 +33,7 @@ class PDController:
         self.previous_error = error
         self.previous_time = current_time
 
-        time.sleep(0.5)
+        #time.sleep(0.50)
         return p_term + d_term
 
 # Connecting to robot arm
@@ -137,29 +137,34 @@ def perform_grab(x, y, z, r):
     # x - 28, y - 2, z = -90, r = -180
     userparam="User=0"
     if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
-         return
+        return
     # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
     # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
     x -= 25
     y += 1.7
     r = -185
-    move.MovL(x, y, z, r, userparam)
+    move.MovL(x, y, -65, r, userparam)
     
     finalize = int(input("Enter 0 to CANCEL grab, enter 1 to EXECUTE grab: "))
     if(finalize):
         z = -90 # TEST TUBE Y OFFSET
         move.MovL(x, y, z, r)
     
-    # Close gripper
-    index=1
-    status=0
-    dashboard.DO(index,status)
+        # Close gripper
+        index=1
+        status=0
+        dashboard.DO(index,status)
 
-    move.MovL(x, y, z + 70, r)
-    global tracking_id
-    save_position(tracking_id)
+        move.MovL(x, y, z + 70, r, userparam)
+        # Save position hovering over tube
+        global tracking_id
+        save_position(tracking_id)
+        print(test_tube_positions)
+
+    # Clear the area
+    move.MovL(x, y, 110, r, userparam)
 
 def perform_place(x, y, z, r):
     # End effector offset values from target destination
@@ -167,29 +172,31 @@ def perform_place(x, y, z, r):
     # x - 28, y - 2, z = -90, r = -180
     userparam="User=0"
     if(parse_get_pose(dashboard.GetPose()) != None):
-                x, y, z, r = parse_get_pose(dashboard.GetPose())
+        x, y, z, r = parse_get_pose(dashboard.GetPose())
     else:
-         return
+        return
     # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
     # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
-    x -= 29
-    y -= 2.5
-    r = -186
-    move.MovL(x, y, z, r, userparam)
+    x -= 25
+    y += 1.7
+    r = -185
+    move.MovL(x, y, -20, r, userparam)
     
     finalize = int(input("Enter 0 to CANCEL release, enter 1 to EXECUTE release: "))
     if(finalize):
-        z = -25 # TEST TUBE Y OFFSET
+        z = -75 # TEST TUBE Y OFFSET
         move.MovL(x, y, z, r)
     
-    # Open gripper
-    index=1
-    status=1
-    dashboard.DO(index,status)
+        # Open gripper
+        index=1
+        status=1
+        dashboard.DO(index,status)
 
-    move.MovL(x, y, z + 70, r)
+    # Retract arm
+    move.MovL(x, y, 110, r)
     global tracking_id
     save_position(tracking_id)
+    print(test_tube_positions)
 
 test_tube_positions = {} 
 def save_position(id):
@@ -200,21 +207,39 @@ def save_position(id):
     else:
         return None
     
-global home_frame
-def set_home_frame(bounding_box_tensor_tuple):
-    global home_frame
-    home_frame = bounding_box_tensor_tuple
-
 global home_x, home_y, home_z
 home_r = -186
+global home_bbox_frame
 
-def set_home_position(arm_position):
+def set_home_position_and_frame(bounding_box_tensor_tuple):
+    global home_bbox_frame
+    global home_x, home_y, home_z
+    home_bbox_frame = bounding_box_tensor_tuple
     if(parse_get_pose(dashboard.GetPose()) != None):
-        x, y, z, r = parse_get_pose(dashboard.GetPose())
+        home_x, home_y, home_z, _ = parse_get_pose(dashboard.GetPose())
     else:
         print("setting home position failed... attempting again")
-        set_home_position()
+        set_home_position_and_frame()
     
+def bb_intersection_over_union(boxA, boxB):
+	# determine the (x, y)-coordinates of the intersection rectangle
+	xA = max(boxA[0], boxB[0])
+	yA = max(boxA[1], boxB[1])
+	xB = min(boxA[2], boxB[2])
+	yB = min(boxA[3], boxB[3])
+	# compute the area of intersection rectangle
+	interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+	# compute the area of both the prediction and ground-truth
+	# rectangles
+	boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+	boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+	# compute the intersection over union by taking the intersection
+	# area and dividing it by the sum of prediction + ground-truth
+	# areas - the interesection area
+	iou = interArea / float(boxAArea + boxBArea - interArea)
+	# return the intersection over union value
+	return iou
+
 # Load a model
 model = YOLO("yolo_models/yolov8_best.pt")
 
@@ -241,12 +266,12 @@ y_controller = PDController(0.9, 0.1)
 # Run MovL
 userparam="User=0"
 # Home 274, 10, 130, -180
+global x, y, z, r
 x = 274
 y = 10
 z = 110
 r = -186
 move.MovL(x, y, z, r, userparam)
-global previous_x, previous_y, previous_z, previous_r
 previous_x, previous_y, previous_z, previous_r = x, y, z, r
 
 # Open gripper
@@ -257,14 +282,18 @@ dashboard.DO(index,status)
 # Set action to tracking
 action = 0
 
+dashboard.User(0)
+dashboard.Tool(0)
+
 def search(x_real_offset, y_real_offset, z_decrement):
     #
     #
     ## Search code start
-    User=2
-    Tool=0
+
     # Get current pose
+    move.Sync()
     if(parse_get_pose(dashboard.GetPose()) != None):
+        global x, y, z, r
         x, y, z, r = parse_get_pose(dashboard.GetPose())
         global previous_x, previous_y, previous_z, previous_r
         previous_x, previous_y, previous_z, previous_r = x, y, z, r
@@ -292,6 +321,8 @@ def search(x_real_offset, y_real_offset, z_decrement):
     #
     #
 
+z_decrement = 0
+
 # Loop to continuously get frames from the webcam
 while True:
     success, frame = cap.read()  # Capture frame-by-frame
@@ -300,17 +331,26 @@ while True:
         print("Failed to grab frame.")
         break
 
-    # Run YOLOv8 tracking on the frame, persisting tracks between frames
-    results = model.track(frame, persist=True, verbose=False)
+    if action == 4:
+        # If action is to load the home frame and position, set results to home bboxes
+        results = home_bbox_frame
+        action = -1
+    elif action == -1:
+        results = model.track(frame, persist=False, verbose=False, max_det=25, tracker="botsort.yaml")
+    else:
+        # Run YOLOv8 tracking on the frame, persisting tracks between frames
+        results = model.track(frame, persist=True, verbose=False, max_det=25, tracker="botsort.yaml")
 
     # Get the boxes and track IDs
     if len(results[0].boxes) > 0 and len(results[0].boxes.xyxy) > 0:
         bboxes_coord = results[0].boxes.xyxy
 
+        # If tracking id exists in bboxes, assign it's index to a variable
         if((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0):
             tracking_index = ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].item())
-        else:
+        else: # Default tracking index to 0
             tracking_index = 0
+
         x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
 
         # Visualize the results on the frame
@@ -324,12 +364,6 @@ while True:
         #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
         print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
-        if(action == 0):
-            search(x_real_offset, y_real_offset, z_decrement=False)
-        elif(action == 1):
-            perform_grab(x, y, z, r)
-            
-
         # Draw line from middle of the selected test tube and the center of the screen
         cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
 
@@ -341,8 +375,21 @@ while True:
 
     # If w is pressed, allow user to change action
     if cv.waitKey(1) & 0xFF == ord("a"):
-        print("0 for tracking, 1 for grabbing, 2 for placing")
+        print("0 for tracking, 1 for grabbing, 2 for placing, 3 to set home, 4 to load home")
         action = int(input("Enter an action integer: "))
+        move.Sync()
+        if(action == 0):
+            z_decrement = int(input("z_decrement: 0 for off, 1 for on"))
+        # if(action == 0):
+        #     # Run MovL
+        #     userparam="User=0"
+        #     # Home 274, 10, 130, -180
+        #     x = 274
+        #     y = 10
+        #     z = 110
+        #     r = -186
+        #     move.MovL(x, y, z, r, userparam)
+        #     previous_x, previous_y, previous_z, previous_r = x, y, z, r
 
     # If w is pressed, allow user to change tracking index
     elif cv.waitKey(1) & 0xFF == ord("w"):
@@ -351,6 +398,29 @@ while True:
     # Break the loop if 'q' is pressed
     elif cv.waitKey(1) & 0xFF == ord("q"):
         break
+
+    # Action states
+    if(action == 0): # Searching
+        search(x_real_offset, y_real_offset, z_decrement)
+    elif(action == 1): # Grabbing
+        perform_grab(x, y, z, r)
+        action = -1
+    elif(action == 2): # Placing
+        perform_place(x, y, z, r)
+        action = -1
+    elif(action == 3): # Set home position and frame
+        set_home_position_and_frame(results)
+        action = -1
+    elif(action == 4): # Load home position and frame
+        x, y, z, r = home_x, home_y, home_z, home_r
+        previous_x, previous_y, previous_z, previous_r = x, y, z, r
+        
+        # Move to home position
+        move.MovL(x, y, z, r, userparam)
+        move.Sync()
+        action = -1
+
+        # Initialize the results with the home frame
 
     #time.sleep(5)
 
