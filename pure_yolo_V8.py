@@ -64,7 +64,7 @@ model = YOLO("yolo_models/yolov8_best.pt")
 track_history = defaultdict(lambda: [])
 
 # Open a connection to the webcam
-cap = cv.VideoCapture(1)
+cap = cv.VideoCapture(0)
 
 if not cap.isOpened():
     print("Error: Could not open webcam.")

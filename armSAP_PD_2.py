@@ -260,8 +260,8 @@ dashboard, move, feed = connect_robot()
 load=0.400 # around the total load the end effector will be handling, in kilograms
 dashboard.EnableRobot(load)
 
-x_controller = PDController(0.9, 0.1)
-y_controller = PDController(0.9, 0.1)
+x_controller = PDController(0.5, 0.05)
+y_controller = PDController(0.5, 0.05)
 
 # Run MovL
 userparam="User=0"
@@ -310,7 +310,7 @@ def search(x_real_offset, y_real_offset, z_decrement):
 
     x_movement = x_controller.compute(x_real_offset) * -1
     y_movement = y_controller.compute(y_real_offset) * -1
-
+    move.Sync()
     # Run MovL
     userparam="User=0"
     if(z > -65 and z_decrement == True):
@@ -414,7 +414,7 @@ while True:
     elif(action == 4): # Load home position and frame
         x, y, z, r = home_x, home_y, home_z, home_r
         previous_x, previous_y, previous_z, previous_r = x, y, z, r
-        
+
         # Move to home position
         move.MovL(x, y, z, r, userparam)
         move.Sync()
