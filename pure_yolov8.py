@@ -35,11 +35,11 @@ def bbox_center_tensor(xyxy):
     return torch.tensor(bbox_center_tensor)
 
 # Load a pre-trained YOLOv10n model
-model = YOLO("yolo_models/best_4.pt")
+model = YOLO("yolo_models/best_3.pt")
 
 #cap = cv.VideoCapture('testTubeVid.MOV')
 
-camera_stream = 1
+camera_stream = 0
 cap = cv.VideoCapture(camera_stream)
 # fourcc = cv.VideoWriter_fourcc(*'DIVX')
 # out = cv.VideoWriter('output1.avi', cv.VideoWriter_fourcc(*'MJPG'), 20.0, (1280, 720))
