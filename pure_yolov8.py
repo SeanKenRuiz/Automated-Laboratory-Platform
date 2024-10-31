@@ -39,7 +39,7 @@ model = YOLO("yolo_models/best_3.pt")
 
 #cap = cv.VideoCapture('testTubeVid.MOV')
 
-camera_stream = 0
+camera_stream = 1
 cap = cv.VideoCapture(camera_stream)
 # fourcc = cv.VideoWriter_fourcc(*'DIVX')
 # out = cv.VideoWriter('output1.avi', cv.VideoWriter_fourcc(*'MJPG'), 20.0, (1280, 720))
