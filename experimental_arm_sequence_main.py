@@ -284,23 +284,10 @@ def set_home_position_and_frame(bounding_box_tensor_tuple):
 # 	return iou
 
 global test_tube_check 
-def first_available_test_tube(results):
-    test_tube_check = results[0].boxes.id.clone()
-
-    empty_holder_indices = (results[0].boxes.cls == 0).nonzero(as_tuple=True)[0]
-    test_tube_indices = (results[0].boxes.cls == 1).nonzero(as_tuple=True)[0]
-    tray_indicies = (results[0].boxes.cls == 2).nonzero(as_tuple=True)[0]
-
-    test_tube_check[tray_indicies] = float('inf')
-    test_tube_check[empty_holder_indices] = float('inf')
-
+def first_available_test_tube():
     first_available_test_tube_id = test_tube_check[test_tube_indices[0]]
     test_tube_check[test_tube_indices[0]] = float('inf')
     return first_available_test_tube_id
-        
-
-
-    move.MovL()
 
 # Load a model
 tray_model = YOLO("yolo_models/best_3.pt")
@@ -388,10 +375,14 @@ z_decrement = 0
 first_tracking_index = False
 jogging = False
 previous_time = time.time()
+first_available_test_tube_running = False
+
 # Loop to continuously get frames from the webcam
 dashboard.SpeedL(20)
 dashboard.AccL(20)
 dashboard.SpeedFactor(20)
+action_index = -1
+tray_model_running = 1
 
 while True:
     success, frame = cap.read()  # Capture frame-by-frame
@@ -408,6 +399,56 @@ while True:
     else:
         # Run YOLOv8 tracking on the frame, persisting tracks between frames
         results = tray_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=25, tracker="tracker_models/bytetrack.yaml")
+
+    # GET NEXT AVAILABLE TEST TUBE
+    if(first_available_test_tube_running == False):
+        tracking_index = first_available_test_tube()
+        test_tube_check = results[0].boxes.id.clone()
+
+        empty_holder_indices = (results[0].boxes.cls == 0).nonzero(as_tuple=True)[0]
+        test_tube_indices = (results[0].boxes.cls == 1).nonzero(as_tuple=True)[0]
+        tray_indicies = (results[0].boxes.cls == 2).nonzero(as_tuple=True)[0]
+
+        test_tube_check[tray_indicies] = float('inf')
+        test_tube_check[empty_holder_indices] = float('inf')
+        first_available_test_tube_running = True
+
+    action_index += 1
+
+    action_sequence = [0, # Search for test tube id
+                       1, # Pick up test tube
+                       7, # Move SAFELY to scale
+                       0, # Search for empty holder id 
+                       2, # Perform place
+                       1, # Pick up test tube
+                       6, # Move SAFELY to tray
+                       2, # Perform place
+                       -2] # Reset
+    
+    action = action_sequence[action_index]
+
+    """
+    first_available_test_tube sequence
+    1. Initialize first available test tube id
+        # Set first_available_test_tube_running to True
+    2. Search for test tube id - CHECK
+    3. Pick up test tube - CHECK
+
+    4. STOP FEED FROM TRAY_MODEL
+    5. Move SAFELY to scale
+    6. START FEED FROM SCALE_MODEL
+
+    7. Search for empty holder id
+    8. Perform place
+    9. Pick up again
+
+    10. STOP FEED FROM SCALE_MODEL
+    11. Move SAFELY back to tray
+    12. STOP FEED FROM TRAY_MODEL
+
+    13. Perform place in original spot
+    14. Set first_available_test_tube_running to False to run function again
+    """
 
     # IF does NOT contain any IDs AND the specified ID index
     if(((results[0].boxes.id != None) and ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0)) == False):
@@ -496,7 +537,11 @@ while True:
     elif(action == 5): # Jog between positions
         tracking_index = 0
         jogging = True
-        action = 0
+        action = 0 
+    elif(action == -2): # Reset action_sequence
+        action_index = -1
+        first_available_test_tube_running = False
+
 
         # Initialize the results with the home frame
 

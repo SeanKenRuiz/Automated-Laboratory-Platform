@@ -372,6 +372,9 @@ previous_time = time.time()
 dashboard.SpeedL(20)
 dashboard.AccL(20)
 dashboard.SpeedFactor(20)
+# Define where on the range of the x-axis when hovering within
+SCALE_MIN_X = 25
+SCALE_MAX_X = 40
 
 while True:
     success, frame = cap.read()  # Capture frame-by-frame

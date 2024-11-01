@@ -53,23 +53,8 @@ def tray_tilted_right(results):
     max_masked_xyxy[tray_indicies] = float('-inf')
 
     
-    # print(min_masked_xyxy)
-    # print(max_masked_xyxy)
+    left_min_index, top_max_index, right_max_index, bottom_min_index = find_min_max_ltrb(min_masked_xyxy, max_masked_xyxy)
 
-    # Find the minimum value in each column (dim=0 specifies columns)
-    min_ltrb_values, min_indices = torch.min(min_masked_xyxy, dim=0)
-
-    # Find the maximum value in each column (dim=0 specifies columns)
-    max_ltrb_values, max_indices = torch.max(max_masked_xyxy, dim=0)
-
-    # print(min_ltrb_values) 
-    # print(min_indices)
-
-    # Get left max, top max, right max, bottom max
-    left_min_index = min_indices[0].item()
-    top_max_index = max_indices[1].item()
-    right_max_index = max_indices[2].item()
-    bottom_min_index = min_indices[3].item()
     print(f"left_max_index: {left_min_index}, top_max_index: {top_max_index}, right_max_index: {right_max_index}, bottom_max_index: {bottom_min_index}")
 
     # Tilt left = l_x < t_x < b_x < r_x
@@ -92,12 +77,35 @@ def tray_tilted_right(results):
     else:
         return 
     
+def find_min_max_ltrb(xyxy):
+
+    # Find the minimum value in each column (dim=0 specifies columns)
+    min_ltrb_values, min_indices = torch.min(xyxy, dim=0)
+
+    # Find the maximum value in each column (dim=0 specifies columns)
+    max_ltrb_values, max_indices = torch.max(xyxy, dim=0)
+
+    left_min_index = min_indices[0].item()
+    top_max_index = max_indices[1].item()
+    right_max_index = max_indices[2].item()
+    bottom_min_index = min_indices[3].item()
+
+    return left_min_index, top_max_index, right_max_index, bottom_min_index
+
+
 def custom_sort(xyxy):
     sorted_tray = xyxy.clone()
     sorted_tray[0:xyxy.shape[0]-1] = float('inf')
 
     left_min_index = 0 ##### MAKE MINS AND MAXES INTO FUNCTION AND CALL IT HERE
     top_max_index = 0
+    
+    #
+    #
+    #
+    #
+    #### NOTING TO SELF, CHANGE MIN_MASKED_XYXY TO XYXY HERE
+    left_min_index, top_max_index, right_max_index, bottom_min_index = find_min_max_ltrb(min_masked_xyxy, max_masked_xyxy)
 
     row_first_node = True
 
@@ -110,8 +118,13 @@ def custom_sort(xyxy):
 
     # Take first node's right side, find closest left side (abs(current_right-next_left))
     if(tray_tilted_right):
+        # WHILE LOOP START HERE
+        # while there exists row in xyxy that != infinity
+
+        # Current top index
+        current_top_index = top_max_index
         # Set current top to the top_max_index's top
-        current_top = xyxy[top_max_index, 1]
+        current_top = xyxy[current_top_index, 1]
 
         # Subtract all bbox values from xyxy to find distance
         distance_from_current_t = xyxy - current_top
@@ -124,7 +137,7 @@ def custom_sort(xyxy):
         # Save current node
         sorted_tray.append[xyxy[top_max_index]]
         # Delete from available xyxy bboxes
-        xyxy = xyxy[top_max_index] = float('inf')
+        xyxy[top_max_index] = float('inf')
 
         # If distance between current_right and next_left within expected range,
         if((min_dist_lr >= dist_upper_bound) and (min_dist_lr <= dist_lower_bound)):

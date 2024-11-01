@@ -159,10 +159,30 @@ def parse_robot_mode(return_msg):
         return None
         
 def perform_grab(z2, is_camera_centered):
+    
+    """
+    Have the MG400 robot arm perform grab sequence 
+
+    Parameters:
+    int: the z value the object is at
+    boolean: is the camera centered over the object?
+
+    Returns:
+    None
+    """
     # End effector offset values from target destination
     # MAKE SURE TO CALIBRATE THESE VALUES IF WEBCAM IS EVER UNMOUNTED
+    # Additionally, if this position may differ depending on how far J1 has to rotate from its x/y axes
+
     # x - 28, y - 2, z = -90, r = -180
+
+    # Open gripper
+    index=1
+    status=1
+    dashboard.DO(index,status)
+    
     userparam="User=0"
+    
     if(parse_get_pose(dashboard.GetPose()) != None):
         x, y, z, r = parse_get_pose(dashboard.GetPose())
         previous_x, previous_y, previous_z, previous_r = x, y, z, r
@@ -171,9 +191,14 @@ def perform_grab(z2, is_camera_centered):
     # x -= 28 # CAMERA X OFFSET VALUE FROM END EFFECTOR
     # y -= 1.6 # CAMERA Y OFFSET VALUE FROM END EFFECTOR
     dashboard.SpeedFactor(100)
-    if(is_camera_centered):
+    if(is_camera_centered and using_tray_model):
         x -= 25
         y += 1.7
+        r = -185
+        move.MovL(x, y, z2+25, r, userparam)
+    if(is_camera_centered and not using_tray_model):
+        x -= 25.97
+        y += 1.01
         r = -185
         move.MovL(x, y, z2+25, r, userparam)
     
@@ -263,30 +288,11 @@ def set_home_position_and_frame(bounding_box_tensor_tuple):
     else:
         print("setting home position failed... attempting again")
         set_home_position_and_frame()
-    
-# def bb_intersection_over_union(boxA, boxB):
-# 	# determine the (x, y)-coordinates of the intersection rectangle
-# 	xA = max(boxA[0], boxB[0])
-# 	yA = max(boxA[1], boxB[1])
-# 	xB = min(boxA[2], boxB[2])
-# 	yB = min(boxA[3], boxB[3])
-# 	# compute the area of intersection rectangle
-# 	interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
-# 	# compute the area of both the prediction and ground-truth
-# 	# rectangles
-# 	boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
-# 	boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
-# 	# compute the intersection over union by taking the intersection
-# 	# area and dividing it by the sum of prediction + ground-truth
-# 	# areas - the interesection area
-# 	iou = interArea / float(boxAArea + boxBArea - interArea)
-# 	# return the intersection over union value
-# 	return iou
-
+   
 # Load a model
 tray_model = YOLO("yolo_models/best_3.pt")
 
-scale_model = YOLO("yolo_models/best_3.pt")
+#scale_model = YOLO("yolo_models/best_3.pt")
 
 # Store the track history
 track_history = defaultdict(lambda: [])
@@ -331,7 +337,7 @@ dashboard.User(0)
 dashboard.Tool(0)
 move.Sync()
 
-def search(x_real_offset, y_real_offset, z_decrement):
+def search(x_real_offset, y_real_offset):
     #
     #
     ## Search code start
@@ -356,13 +362,15 @@ def search(x_real_offset, y_real_offset, z_decrement):
 
     x_movement = x_controller.compute(x_real_offset) * -1
     y_movement = y_controller.compute(y_real_offset) * -1
-    #move.Sync()
-    # Run MovL
-    userparam="User=0"
-    if(z > -65 and z_decrement == True):
-        move.MovL(x + x_movement, y + y_movement, z - 5, r, userparam)
-    else: 
+    #move.Sync() THIS SYNC CAUSES FRAMES TO PROCESS SEQUENTIALLY  
+
+    # If in tray area OR if movement is within the scale x-axis min and maximum values
+    if using_tray_model or ((not using_tray_model) and (x + x_movement > SCALE_MIN_X and x + x_movement < SCALE_MAX_X)):
+        # Run MovL
+        userparam="User=0"
         move.MovL(x + x_movement, y + y_movement, z, r, userparam)
+    else:
+        print("Search: Movement out of bounds")
     ## Search END
     #
     #
@@ -374,12 +382,18 @@ previous_time = time.time()
 using_tray_model = True
 holding_tube = False
 camera_unlocked = True
+global action_buffer_previous_time
 
-# Loop to continuously get frames from the webcam
+# Define where on the range of the x-axis when hovering within scale
+SCALE_MIN_X = 25
+SCALE_MAX_X = 90
+
 dashboard.SpeedL(20)
 dashboard.AccL(20)
 dashboard.SpeedFactor(20)
 
+# Loop to continuously get frames from the webcam
+# To end loop, click on Python image frame and press 'q'
 while True:
     success, frame = cap.read()  # Capture frame-by-frame
 
@@ -387,75 +401,73 @@ while True:
     if not success:
         print("Failed to grab frame.")
         break
-    if(camera_unlocked):
-        if(using_tray_model):
-            if action == 4:
-                # If action is to load the home frame and position, set results to home bboxes
-                #results = home_bbox_frame
-                action = -1
-            else:
-                # Run YOLOv8 tracking on the frame, persisting tracks between frames
-                results = tray_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=25, tracker="tracker_models/bytetrack.yaml")
-        #else:
-        #    results = scale_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=10, tracker="tracker_models/bytetrack.yaml")
 
-        # IF does NOT contain any IDs AND the specified ID index
-        if(((results[0].boxes.id != None) and ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0)) == False):
-            annotated_frame = results[0].plot(conf=False)
-            cv.imshow('YOLOv8 Webcam', annotated_frame)
-            x_real_offset, y_real_offset = 0, 0
-            print("Defaulting to first_tracking_index available...")
-            print("Change id to existing index")
-            first_tracking_index = True
+    # Run YOLOv8 tracking on the frame, persisting tracks between frames
+    results = tray_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=25, tracker="tracker_models/bytetrack.yaml")
 
-        # If results has bounding boxes to go along with those bounding boxes
-        elif((len(results[0].boxes) > 0) and (len(results[0].boxes.xyxy) > 0)):
-            current_time = time.time() - previous_time
+    # IF does NOT contain any IDs AND the specified ID index
+    if(((results[0].boxes.id != None) and ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0)) == False):
+        annotated_frame = results[0].plot(conf=False)
+        cv.imshow('YOLOv8 Webcam', annotated_frame)
+        x_real_offset, y_real_offset = 0, 0
+        print("Defaulting to first_tracking_index available...")
+        print("Change id to existing index")
+        first_tracking_index = True
 
-            # If jogging between positions enabled
-            if(jogging == True and current_time > 5):
-                save_position(tracking_index)
-                tracking_index += 1
-                previous_time = time.time()
-            
-            # Draw line to the center of the tracking_id's bbox
-            bboxes_coord = results[0].boxes.xyxy    # Assign bounding box coordinates to the variable bboxes_coord
-            if(first_tracking_index == False and jogging == False):
-                tracking_index = ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].item()) # Assign index of the tracking_id to the variable tracking_index
+    # If results has bounding boxes to go along with those bounding boxes
+    elif((len(results[0].boxes) > 0) and (len(results[0].boxes.xyxy) > 0)):
+        current_time = time.time() - previous_time
 
-            # Calculate pixel offset from the user-specified tracking_id
-            x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
+        # If jogging between positions enabled
+        if(jogging == True and current_time > 5):
+            save_position(tracking_index)
+            tracking_index += 1
+            previous_time = time.time()
+        
+        # Draw line to the center of the tracking_id's bbox
+        bboxes_coord = results[0].boxes.xyxy    # Assign bounding box coordinates to the variable bboxes_coord
+        if(first_tracking_index == False and jogging == False):
+            tracking_index = ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].item()) # Assign index of the tracking_id to the variable tracking_index
 
-            # Visualize the results on the frame and turn of confidence
-            annotated_frame = results[0].plot(conf=False)
+        # Calculate pixel offset from the user-specified tracking_id
+        x_offset, y_offset, ocenter_x, ocenter_y, x_real_offset, y_real_offset = center_offset_calculations(tracking_index, bboxes_coord)
 
-            # Convert tensor values to integers
-            if(torch.is_tensor(ocenter_x)):
-                ocenter_x = int(ocenter_x.item())
-                ocenter_y = int(ocenter_y.item())
+        # Visualize the results on the frame and turn of confidence
+        annotated_frame = results[0].plot(conf=False)
 
-            #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
-            print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
+        # Convert tensor values to integers
+        if(torch.is_tensor(ocenter_x)):
+            ocenter_x = int(ocenter_x.item())
+            ocenter_y = int(ocenter_y.item())
 
-            # Draw line from middle of the selected test tube and the center of the screen
-            cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
+        #print(f"PIXEL OFFSET X: {x_offset}, Y: {y_offset}")
+        print(f"DOBOT X: {x_real_offset}, Y: {y_real_offset}")
 
-            # Display the resulting frame
-            cv.imshow('YOLOv8 Webcam', annotated_frame)
-        else:
-            print("No bounding boxes detected.")
-            print("Defaulting to first_tracking_index available...")
-            first_tracking_index = True
-            cv.imshow('YOLOv8 Webcam', frame)
+        # Draw line from middle of the selected test tube and the center of the screen
+        cv.line(annotated_frame, (ocenter_x, ocenter_y), (320, 240), (255, 0, 0), 3)
+
+        # Display the resulting frame
+        cv.imshow('YOLOv8 Webcam', annotated_frame)
+    else:
+        print("No bounding boxes detected.")
+        print("Defaulting to first_tracking_index available...")
+        first_tracking_index = True
+        cv.imshow('YOLOv8 Webcam', frame)
+
+    # Get time since action = -1 was set
+    if(action == -1):
+        action_buffer_time = time.time() - action_buffer_previous_time
 
     # If w is pressed, allow user to change action
-    if cv.waitKey(1) & 0xFF == ord("a"):
+    if cv.waitKey(1) & 0xFF == ord("a") or (action == -1 and action_buffer_time > 5):
         print("0 for tracking, 1 for grabbing, 2 for placing, 3 to set home, 4 to load home")
         print("5 for jogging, 6 move SCALE to TRAY, 7 move TRAY to SCALE, 8 PLACE in SCALE, 9 PICK from SCALE ")        
         action = int(input("Enter an action integer: "))
         move.Sync()
-        if(action == 0):
-            z_decrement = int(input("z_decrement: 0 for off, 1 for on"))
+        # Action code that activates only once
+        if(action == -1):
+            action_buffer_previous_time = time.time()
+        elif(action == 0):
             tracking_id = int(input("Enter tracking ID: "))
             first_tracking_index = False
 
@@ -471,29 +483,34 @@ while True:
     if((action == 0) and (parse_robot_mode(dashboard.RobotMode()) != 7)): # Searching
         if(using_tray_model):
             results = tray_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=25, tracker="tracker_models/bytetrack.yaml")
-        #else:
-        #    results = scale_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=10, tracker="tracker_models/bytetrack.yaml")
+        else:
+            results = tray_model.track(frame, show_conf=False, persist=True, verbose=False, max_det=10, tracker="tracker_models/bytetrack.yaml")
         annotated_frame = results[0].plot(conf=False)
         cv.imshow('YOLOv8 Webcam', annotated_frame)
-        search(x_real_offset, y_real_offset, z_decrement)
+        search(x_real_offset, y_real_offset)
+
     elif(action == 1): # Grabbing
         if(using_tray_model):
             perform_grab(-90, True)
         elif(using_tray_model == False):
-            perform_grab(35, True)
+            perform_grab(40, True)
         action = -1 # Will be hovering over same position, but test tube -> empty holder and different id
+        action_buffer_previous_time = time.time()
         holding_tube = True
+
     elif(action == 2): # Placing
         if(using_tray_model):
             perform_place(-75)
         elif(using_tray_model == False):
             perform_place(70)
         action = -1
+        action_buffer_previous_time = time.time()
         holding_tube = False
 
     elif(action == 3): # Set home position and frame
         set_home_position_and_frame(results)
         action = -1
+        action_buffer_previous_time = time.time()
 
     elif(action == 4): # Load home position and frame
         x, y, z, r = home_x, home_y, home_z, home_r
@@ -503,6 +520,7 @@ while True:
         move.Sync()
         using_tray_model = True
         action = -1
+        action_buffer_previous_time = time.time()
 
     elif(action == 5): # Jog between positions
         tracking_index = 0
@@ -519,9 +537,9 @@ while True:
 
         # Go back to tray
         # Alignment point (point on the arc)
-        x = 224
-        y = 200
-        z = 110
+        x = 127
+        y = 183
+        z = 146
         r = -186
         # Target coordinates
         x2 = 274
@@ -534,20 +552,22 @@ while True:
         using_tray_model = True
         dashboard.SpeedFactor(20)
         camera_unlocked = True
+        action_buffer_previous_time = time.time()
+
     elif(action == 7): # Move from TRAY to SCALE
         dashboard.SpeedFactor(100)
         # Go from tray to pre-scale position
-        x = 224
-        y = 200
-        z = 110
+        x = 127
+        y = 183
+        z = 146
         r = -186
-        # Target coordinates
+        # Target coordinates (pre-scale)
         x2, y2, z2, r2 = 68, 210, 170, -186
         move.Arc(x, y, z, r, x2, y2, z2, r2)  
         move.Sync()
 
         # Scale hover position
-        x, y, z, r = 50, 342.65, 154.89, -186
+        x, y, z, r = 61, 305, 160, -186
         move.MovL(x, y, z, r, userparam)
         move.Sync()
         action = -1
@@ -561,6 +581,7 @@ while True:
         move.MovL(x, y, z, r, userparam)
         move.Sync()
         action = -1
+        action_buffer_previous_time = time.time()
 
         # Open gripper
         index=1
@@ -592,6 +613,8 @@ while True:
         move.Sync()
 
         action = -1
+        action_buffer_previous_time = time.time()
+
         using_tray_model = True
         move.Sync()
 

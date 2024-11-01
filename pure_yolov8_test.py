@@ -188,7 +188,7 @@ while True:
     print(results[0].boxes.id != None and (results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0)
     if (len(results[0].boxes) > 0) and (len(results[0].boxes.xyxy) > 0) and (results[0].boxes.id != None) and ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0):
         bboxes_coord = results[0].boxes.xyxy
-        #print((results[0].boxes.cls == 0).nonzero(as_tuple=True)[0])
+        #qqprint((results[0].boxes.cls == 0).nonzero(as_tuple=True)[0])
         if((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].shape[0] > 0):
             tracking_index = ((results[0].boxes.id == tracking_id).nonzero(as_tuple=True)[0].item())
 
